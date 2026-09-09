@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Debug builds only.
+
+      Metro serves the JS bundle over the wire during development, so the dev
+      build needs network access. The release build has the bundle baked into
+      the APK and declares no INTERNET permission at all, which makes "your
+      memories never leave this phone" something Android enforces rather than
+      something we merely promise.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>

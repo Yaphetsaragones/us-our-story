@@ -1,0 +1,154 @@
+# Builds the iOS app on GitHub's free macOS runners, with no Mac and no Apple
+# Developer account.
+#
+# The trick: a build targeting the iOS **Simulator** needs no code signing at
+# all, so none of Apple's certificate machinery — or its $99/year — applies.
+# The result is a self-contained .app you can drop into Appetize.io's free tier
+# and open in any browser, including Safari on an iPhone.
+#
+# Run it from the Actions tab ("Run workflow"), or on any push to main.
+
+name: iOS Simulator Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Cheap Linux gate first. macOS minutes bill at 10x on private repos, so we
+  # never spend them on a tree that already fails typecheck, lint or tests.
+  checks:
+    name: Types, lint & tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint . --ext .ts,.tsx --max-warnings 0
+
+      - name: Tests
+        run: npx jest --ci
+
+  ios:
+    name: Build for iOS Simulator
+    needs: checks
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          ruby --version
+          echo "Available simulators:"
+          xcrun simctl list runtimes | head -20
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Bundler installs into the repo so the system gem dir stays untouched.
+      - name: Cache RubyGems
+        uses: actions/cache@v4
+        with:
+          path: vendor/bundle
+          key: gems-${{ runner.os }}-${{ hashFiles('Gemfile') }}
+          restore-keys: gems-${{ runner.os }}-
+
+      - name: Install CocoaPods
+        run: |
+          bundle config set --local path vendor/bundle
+          bundle install --jobs 4 --retry 3
+
+      - name: Cache Pods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ hashFiles('ios/Podfile', 'package-lock.json') }}
+          restore-keys: pods-
+
+      - name: pod install
+        working-directory: ios
+        run: bundle exec pod install
+
+      # Release configuration makes Xcode run React Native's bundling phase, so
+      # the JS is baked into the .app. No Metro, no network — it just runs.
+      - name: Build (unsigned, simulator)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/UsOurStory.xcworkspace \
+            -scheme UsOurStory \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Verify the bundle is self-contained
+        run: |
+          APP="ios/build/Build/Products/Release-iphonesimulator/UsOurStory.app"
+          test -d "$APP" || { echo "::error::No .app was produced"; exit 1; }
+          echo "Architectures:"
+          lipo -info "$APP/UsOurStory" || true
+          # The embedded JS bundle is what lets it run without Metro.
+          if [ ! -f "$APP/main.jsbundle" ]; then
+            echo "::error::main.jsbundle missing — the app would need Metro to run"
+            exit 1
+          fi
+          echo "JS bundle: $(du -h "$APP/main.jsbundle" | cut -f1)"
+          echo "App size:  $(du -sh "$APP" | cut -f1)"
+
+      # ditto (not zip) preserves the bundle structure Appetize expects.
+      - name: Package for Appetize
+        run: |
+          cd ios/build/Build/Products/Release-iphonesimulator
+          ditto -c -k --sequesterRsrc --keepParent UsOurStory.app UsOurStory-sim.zip
+          echo "Packaged: $(du -h UsOurStory-sim.zip | cut -f1)"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: UsOurStory-ios-simulator
+          path: ios/build/Build/Products/Release-iphonesimulator/UsOurStory-sim.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Next steps
+        run: |
+          echo "### iOS simulator build ready :green_heart:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download **UsOurStory-ios-simulator** from the Artifacts section below." >> $GITHUB_STEP_SUMMARY
+          echo "2. Go to <https://appetize.io/upload> and drop the .zip in (free tier, no card)." >> $GITHUB_STEP_SUMMARY
+          echo "3. Open the link Appetize gives you — in any browser, on any device." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "It is a simulator, so the camera, photo library and Face ID are stubs." >> $GITHUB_STEP_SUMMARY
+          echo "Everything else — the timeline, collections, notes, countdowns, the year movie — is real." >> $GITHUB_STEP_SUMMARY

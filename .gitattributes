@@ -1,0 +1,30 @@
+# Authored on Windows, built on Linux and macOS runners. Normalising to LF in
+# the repository keeps shell scripts executable on those machines — a CRLF
+# `gradlew` fails outright on a Linux runner.
+
+* text=auto eol=lf
+
+# Scripts that must be LF no matter what.
+*.sh              text eol=lf
+gradlew           text eol=lf
+android/gradlew   text eol=lf
+ios/.xcode.env    text eol=lf
+
+# Windows-only files keep CRLF.
+*.bat             text eol=crlf
+*.cmd             text eol=crlf
+
+# Never touch binaries.
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.ttf             binary
+*.otf             binary
+*.keystore        binary
+*.jar             binary
+*.apk             binary
+*.aab             binary
+*.ipa             binary
+*.mp4             binary
+*.mov             binary
