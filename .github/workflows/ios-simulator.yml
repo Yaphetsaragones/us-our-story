@@ -8,7 +8,7 @@
 #
 # Run it from the Actions tab ("Run workflow"), or on any push to main.
 
-name: iOS Simulator Build
+name: iOS Build
 
 on:
   push:
@@ -152,3 +152,110 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "It is a simulator, so the camera, photo library and Face ID are stubs." >> $GITHUB_STEP_SUMMARY
           echo "Everything else — the timeline, collections, notes, countdowns, the year movie — is real." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "For the app on a **real iPhone**, use the .ipa from the *Build installable iPhone app* job." >> $GITHUB_STEP_SUMMARY
+
+  # The real thing: an app that installs on an actual iPhone.
+  #
+  # Building for a device needs no Apple account as long as we skip signing —
+  # the .ipa comes out unsigned. Sideloadly (free, Windows) then signs it on the
+  # user's own machine with their ordinary Apple ID and installs it over USB.
+  # Apple limits free-account signatures to 7 days, after which it needs a
+  # refresh; that is Apple's rule, not something this build can change.
+  device:
+    name: Build installable iPhone app (.ipa)
+    needs: checks
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Cache RubyGems
+        uses: actions/cache@v4
+        with:
+          path: vendor/bundle
+          key: gems-${{ runner.os }}-${{ hashFiles('Gemfile') }}
+          restore-keys: gems-${{ runner.os }}-
+
+      - name: Install CocoaPods
+        run: |
+          bundle config set --local path vendor/bundle
+          bundle install --jobs 4 --retry 3
+
+      - name: Cache Pods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ hashFiles('ios/Podfile', 'package-lock.json') }}
+          restore-keys: pods-
+
+      - name: pod install
+        working-directory: ios
+        run: bundle exec pod install
+
+      # -sdk iphoneos targets real hardware (arm64). Signing is switched off so
+      # no certificate or provisioning profile is required to produce it.
+      - name: Build for device (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/UsOurStory.xcworkspace \
+            -scheme UsOurStory \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ios/build-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            build
+
+      # An .ipa is just a zip with the app inside a folder named Payload.
+      - name: Package as .ipa
+        run: |
+          APP="ios/build-device/Build/Products/Release-iphoneos/UsOurStory.app"
+          test -d "$APP" || { echo "::error::No device .app was produced"; exit 1; }
+
+          echo "Architectures (expect arm64, NOT x86_64):"
+          lipo -info "$APP/UsOurStory"
+
+          if [ ! -f "$APP/main.jsbundle" ]; then
+            echo "::error::main.jsbundle missing — the app would need Metro to run"
+            exit 1
+          fi
+
+          mkdir -p build-ipa/Payload
+          cp -R "$APP" build-ipa/Payload/
+          cd build-ipa
+          zip -qry UsOurStory-unsigned.ipa Payload
+          echo "IPA: $(du -h UsOurStory-unsigned.ipa | cut -f1)"
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: UsOurStory-iphone-ipa
+          path: build-ipa/UsOurStory-unsigned.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: How to install
+        run: |
+          echo "### Installable iPhone app ready :iphone:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download **UsOurStory-iphone-ipa**, then on Windows:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Install Sideloadly (<https://sideloadly.io>) and Apple Devices from the Microsoft Store." >> $GITHUB_STEP_SUMMARY
+          echo "2. Plug the iPhone in, unlock it, and tap **Trust**." >> $GITHUB_STEP_SUMMARY
+          echo "3. Drop the .ipa into Sideloadly, enter a normal Apple ID, press Start." >> $GITHUB_STEP_SUMMARY
+          echo "4. On the iPhone: Settings > General > VPN & Device Management > trust the developer." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A free Apple ID signature lasts 7 days; re-run Sideloadly to refresh it." >> $GITHUB_STEP_SUMMARY
