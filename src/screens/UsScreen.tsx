@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import LinearGradient from 'react-native-linear-gradient';
-import { colors, gradients, radius, spacing, type } from '../theme';
-import { Icon, Row, Screen, ScriptTitle, SectionTitle, TabSpacer } from '../components/ui';
+import { absFill, colors, fonts, gradients, radius, spacing, type } from '../theme';
+import { Icon, Screen, TabSpacer } from '../components/ui';
 import { useApp, useMe } from '../context/AppContext';
 import { visibleMemories, yearsWithMemories } from '../lib/select';
 import { daysBetween, fmtDate } from '../lib/date';
@@ -24,17 +24,12 @@ export function UsScreen({ navigation }: TabProps<'Us'>) {
   const hidden = data.memories.filter(m => m.hidden).length;
   const stored = data.memories.reduce((sum, m) => sum + (m.fileSize ?? 0), 0);
 
-  const daysTogether = data.couple?.togetherSince
-    ? daysBetween(data.couple.togetherSince)
-    : null;
-
+  const daysTogether = data.couple?.togetherSince ? daysBetween(data.couple.togetherSince) : null;
   const code = data.couple?.inviteCode ?? '';
-
-  const shareInvite = () => {
-    Share.share({
-      message: `Join our private space on Us ❤️\n\nInvite code: ${code}\n${inviteLink(code)}`,
-    }).catch(() => {});
-  };
+  const cover = useMemo(
+    () => memories.find(m => m.favorite && m.kind === 'photo') ?? memories.find(m => m.kind === 'photo'),
+    [memories],
+  );
 
   const copyCode = () => {
     Clipboard.setString(code);
@@ -42,120 +37,154 @@ export function UsScreen({ navigation }: TabProps<'Us'>) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const shareInvite = () => {
+    Share.share({
+      message: `Join our private space on Us ❤️\n\nInvite code: ${code}\n${inviteLink(code)}`,
+    }).catch(() => {});
+  };
+
   return (
     <Screen>
-      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={[...gradients.brand]} style={s.hero}>
-          <ScriptTitle text={data.couple?.title ?? 'Us'} size={44} />
-          <Text style={s.names}>
-            {[me?.name, partner?.name].filter(Boolean).join('  &  ') || 'Just you, for now'}
-          </Text>
-          {data.couple?.togetherSince ? (
-            <Text style={s.since}>
-              Together since {fmtDate(data.couple.togetherSince)}
-              {daysTogether !== null ? `  •  ${daysTogether.toLocaleString()} days` : ''}
-            </Text>
-          ) : null}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+        {/* ---------------------------------------------------------- hero */}
+        <View style={s.hero}>
+          {cover ? (
+            <Image source={{ uri: cover.uri }} style={absFill} resizeMode="cover" />
+          ) : (
+            <LinearGradient colors={[...gradients.sunset]} style={absFill} />
+          )}
+          <LinearGradient
+            colors={['rgba(20,10,16,0.86)', 'rgba(20,10,16,0.35)', 'rgba(20,10,16,0.9)']}
+            style={absFill}
+          />
 
-          <View style={s.statsRow}>
-            <Stat value={photos} label="Photos" />
-            <Stat value={videos} label="Videos" />
-            <Stat value={data.notes.length} label="Notes" />
-            <Stat value={data.story.length} label="Milestones" />
-          </View>
-        </LinearGradient>
-
-        <View style={s.section}>
-          <SectionTitle title="Your space" />
-          <Row
-            icon="person-circle-outline"
-            title="Profile & names"
-            subtitle="Names, birthdays, your together-since date"
+          <Pressable
             onPress={() => navigation.navigate('Profile')}
-          />
-          <Row
-            icon="key-outline"
-            title="Invite code"
-            subtitle={code}
-            onPress={copyCode}
-            right={
-              <Text style={s.copyHint}>{copied ? 'Copied' : 'Tap to copy'}</Text>
-            }
-          />
-          <Row
-            icon="share-social-outline"
-            title="Share the invite"
-            subtitle="Send the code and link to your partner"
-            onPress={shareInvite}
-          />
-        </View>
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            style={s.gear}>
+            <Icon name="settings-outline" size={17} color={colors.white} />
+          </Pressable>
 
-        <View style={s.section}>
-          <SectionTitle title="Together" />
-          <Row
-            icon="mail-outline"
-            title="Love Notes"
-            subtitle={`${data.notes.length} note${data.notes.length === 1 ? '' : 's'}`}
-            onPress={() => navigation.navigate('LoveNotes')}
-          />
-          <Row
-            icon="hourglass-outline"
-            title="Countdowns"
-            subtitle={`${data.countdowns.length} counting down`}
-            onPress={() => navigation.navigate('Countdowns')}
-          />
-          <Row
-            icon="time-outline"
-            title="Memory of the Day"
-            subtitle="Relive a special moment every day"
-            onPress={() => navigation.navigate('MemoryOfTheDay')}
-          />
-          <Row
-            icon="film-outline"
-            title="Our Year"
-            subtitle={
-              years.length
-                ? `${years.length} year${years.length === 1 ? '' : 's'} of memories`
-                : 'Your year movie, once you add memories'
-            }
-            onPress={() => navigation.navigate('OurYear')}
-          />
-        </View>
-
-        <View style={s.section}>
-          <SectionTitle title="Memories" />
-          <Row
-            icon="images-outline"
-            title="All memories"
-            subtitle={`${memories.length} item${memories.length === 1 ? '' : 's'}${stored ? ` • ${formatBytes(stored)}` : ''}`}
-            onPress={() =>
-              navigation.navigate('Collection', { source: 'all', title: 'All Memories' })
-            }
-          />
-          <Row
-            icon="star-outline"
-            title="Our Favorites"
-            subtitle={`${memories.filter(m => m.favorite).length} favorited`}
-            onPress={() => navigation.navigate('Collection', { source: 'favorites' })}
-          />
-          <Row
-            icon="lock-closed-outline"
-            title="Privacy & Security"
-            subtitle={
-              data.settings.appLockEnabled
-                ? `App lock on${hidden ? ` • ${hidden} hidden` : ''}`
-                : 'App lock is off'
-            }
-            onPress={() => navigation.navigate('Privacy')}
-          />
-        </View>
-
-        <View style={s.footer}>
-          <Icon name="heart" size={14} color={colors.pink} />
-          <Text style={s.footerText}>
-            More than just photos and videos…{'\n'}It's your love story.
+          <Text style={s.heroKicker}>
+            Same{'\n'}People{'\n'}Brighter{'\n'}Days ♥
           </Text>
+
+          <View style={s.heroBody}>
+            <View style={s.heroTitleRow}>
+              <Text style={s.heroTitle}>{data.couple?.title ?? 'Us'}</Text>
+              <Icon name="heart-outline" size={17} color={colors.white} style={s.heroHeart} />
+            </View>
+            <Text style={s.heroNames}>
+              {[me?.name, partner?.name].filter(Boolean).join('   &   ').toUpperCase() ||
+                'JUST YOU, FOR NOW'}
+            </Text>
+            {data.couple?.togetherSince ? (
+              <Text style={s.heroSince}>
+                Together since {fmtDate(data.couple.togetherSince)}
+                {daysTogether !== null ? `  •  ${daysTogether} days` : ''}
+              </Text>
+            ) : null}
+
+            <View style={s.stats}>
+              <Stat value={photos} label="photos" />
+              <View style={s.statDivider} />
+              <Stat value={videos} label="videos" />
+              <View style={s.statDivider} />
+              <Stat value={data.notes.length} label="notes" />
+              <View style={s.statDivider} />
+              <Stat value={data.story.length} label="milestones" />
+            </View>
+          </View>
         </View>
+
+        {/* --------------------------------------------------- your space */}
+        <SectionHeader title="Your space" script="Just the two of us ♥" />
+
+        <Row
+          icon="people-outline"
+          title="Profile & names"
+          subtitle="Manage your names and relationship details"
+          onPress={() => navigation.navigate('Profile')}
+        />
+        <Row
+          icon="key-outline"
+          title="Invite code"
+          subtitle={code || "It's all locked in"}
+          onPress={copyCode}
+          pill={copied ? 'Copied' : 'Tap to copy'}
+        />
+        <Row
+          icon="share-social-outline"
+          title="Share the invite"
+          subtitle="Send the code and invite your partner"
+          onPress={shareInvite}
+        />
+
+        {/* ----------------------------------------------------- together */}
+        <SectionHeader title="Together" script="A more beautiful us ♥" />
+
+        <Row
+          icon="mail-outline"
+          title="Love Notes"
+          subtitle={`${data.notes.length} note${data.notes.length === 1 ? '' : 's'}`}
+          onPress={() => navigation.navigate('LoveNotes')}
+        />
+        <Row
+          icon="hourglass-outline"
+          title="Countdowns"
+          subtitle={`${data.countdowns.length} active`}
+          onPress={() => navigation.navigate('Countdowns')}
+        />
+        <Row
+          icon="sunny-outline"
+          title="Memory of the Day"
+          subtitle="Relive a special moment each day"
+          onPress={() => navigation.navigate('MemoryOfTheDay')}
+        />
+        <Row
+          icon="film-outline"
+          title="Our Year"
+          subtitle={
+            years.length
+              ? `${years.length} year${years.length === 1 ? '' : 's'} of memories`
+              : 'Your year movie, once you add memories'
+          }
+          onPress={() => navigation.navigate('OurYear')}
+        />
+
+        {/* ----------------------------------------------------- memories */}
+        <SectionHeader title="Memories" script="Everything we keep ♥" />
+
+        <Row
+          icon="images-outline"
+          title="All memories"
+          subtitle={`${memories.length} item${memories.length === 1 ? '' : 's'}${
+            stored ? ` • ${formatBytes(stored)}` : ''
+          }`}
+          onPress={() => navigation.navigate('Collection', { source: 'all', title: 'All Memories' })}
+        />
+        <Row
+          icon="star-outline"
+          title="Our Favorites"
+          subtitle={`${memories.filter(m => m.favorite).length} favorited`}
+          onPress={() => navigation.navigate('Collection', { source: 'favorites' })}
+        />
+        <Row
+          icon="lock-closed-outline"
+          title="Privacy & Security"
+          subtitle={
+            data.settings.appLockEnabled
+              ? `App lock on${hidden ? ` • ${hidden} hidden` : ''}`
+              : 'App lock is off'
+          }
+          onPress={() => navigation.navigate('Privacy')}
+        />
+
+        <Text style={s.footer}>
+          More than just photos and videos…{'\n'}It's your love story. ♥
+        </Text>
 
         <TabSpacer />
       </ScrollView>
@@ -172,38 +201,168 @@ function Stat({ value, label }: { value: number; label: string }) {
   );
 }
 
+function SectionHeader({ title, script }: { title: string; script: string }) {
+  return (
+    <View style={s.sectionHead}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <Text style={s.sectionScript}>{script}</Text>
+    </View>
+  );
+}
+
+function Row({
+  icon,
+  title,
+  subtitle,
+  onPress,
+  pill,
+}: {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  onPress: () => void;
+  pill?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+      style={({ pressed }) => [s.row, pressed && s.rowPressed]}>
+      <View style={s.rowIcon}>
+        <Icon name={icon} size={18} color={colors.pink} />
+      </View>
+      <View style={s.rowBody}>
+        <Text style={s.rowTitle}>{title}</Text>
+        {subtitle ? (
+          <Text style={s.rowSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {pill ? (
+        <View style={s.pill}>
+          <Text style={s.pillText}>{pill}</Text>
+        </View>
+      ) : null}
+      <Icon name="chevron-forward" size={16} color={colors.textFaint} />
+    </Pressable>
+  );
+}
+
 const s = StyleSheet.create({
-  content: { paddingBottom: spacing.xl },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs },
 
+  // hero
   hero: {
-    margin: spacing.lg,
     borderRadius: radius.xl,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.xl,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    paddingTop: spacing.xl,
+    marginBottom: spacing.xl,
+  },
+  gear: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  names: { ...type.h3, color: colors.white, fontWeight: '400', marginTop: -spacing.xs },
-  since: { ...type.caption, color: 'rgba(255,255,255,0.85)', marginTop: spacing.sm },
-  statsRow: {
+  heroKicker: {
+    position: 'absolute',
+    top: spacing.xxl,
+    right: spacing.lg,
+    fontFamily: fonts.script,
+    fontStyle: 'italic',
+    fontSize: 12,
+    lineHeight: 16,
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'right',
+  },
+  heroBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  heroTitle: {
+    fontFamily: fonts.script,
+    fontStyle: 'italic',
+    fontSize: 40,
+    lineHeight: 48,
+    color: colors.white,
+  },
+  heroHeart: { marginLeft: 8, marginTop: 12 },
+  heroNames: { ...type.small, color: colors.white, letterSpacing: 2.5, fontWeight: '600' },
+  heroSince: { ...type.caption, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
+
+  stats: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: spacing.xl,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
-  stat: { alignItems: 'center', flex: 1 },
-  statValue: { ...type.h3, color: colors.white },
-  statLabel: { ...type.caption, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
+  stat: { flex: 1, alignItems: 'center' },
+  statValue: { ...type.h3, color: colors.pink },
+  statLabel: { ...type.caption, fontSize: 9, color: 'rgba(255,255,255,0.7)', marginTop: -1 },
+  statDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.16)' },
 
-  section: { paddingHorizontal: spacing.lg, marginBottom: spacing.lg },
-  copyHint: { ...type.caption, color: colors.pink },
+  // sections
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    marginTop: spacing.lg,
+  },
+  sectionTitle: { ...type.h3, color: colors.text },
+  sectionScript: {
+    fontFamily: fonts.script,
+    fontStyle: 'italic',
+    fontSize: 12,
+    color: colors.textMuted,
+  },
 
-  footer: { alignItems: 'center', paddingVertical: spacing.xl },
-  footerText: {
-    ...type.small,
+  // rows
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.md,
+  },
+  rowPressed: { backgroundColor: colors.surfacePressed },
+  rowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(233,140,163,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowBody: { flex: 1 },
+  rowTitle: { ...type.body, fontWeight: '700', color: colors.text },
+  rowSubtitle: { ...type.caption, color: colors.textMuted, marginTop: 2 },
+  pill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(233,140,163,0.18)',
+  },
+  pillText: { ...type.caption, color: colors.pink, fontWeight: '600' },
+
+  footer: {
+    fontFamily: fonts.script,
+    fontStyle: 'italic',
+    fontSize: 14,
+    lineHeight: 21,
     color: colors.textFaint,
     textAlign: 'center',
-    marginTop: spacing.sm,
-    lineHeight: 20,
-    fontStyle: 'italic',
+    marginTop: spacing.xl,
   },
 });

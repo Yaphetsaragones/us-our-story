@@ -21,16 +21,25 @@ export function systemAlbums(now = Date.now()): Album[] {
     icon: string,
     rule: Album['rule'],
     order: number,
-  ): Album => ({ id, title, icon, rule, system: true, createdAt: now, order });
+    caption: string,
+    accent: string,
+  ): Album => ({ id, title, icon, rule, system: true, createdAt: now, order, caption, accent });
 
   return [
-    make('sys_first_date', 'Our First Date', 'heart-outline', { type: 'firstDay' }, 0),
-    make('sys_trips', 'Trips Together', 'airplane-outline', { type: 'hasLocation' }, 1),
-    make('sys_birthdays', 'Birthdays', 'gift-outline', { type: 'birthdays' }, 2),
-    make('sys_anniversaries', 'Anniversaries', 'infinite-outline', { type: 'anniversary' }, 3),
-    make('sys_funny', 'Funny Videos', 'happy-outline', { type: 'videos' }, 4),
-    make('sys_random', 'Random Happy Moments', 'sparkles-outline', { type: 'uncategorized' }, 5),
-    make('sys_favorites', 'Our Favorites', 'star-outline', { type: 'favorites' }, 6),
+    // prettier-ignore
+    make('sys_first_date', 'Our First Date', 'heart-outline', { type: 'firstDay' }, 0, 'Where it all began', '#E98CA3'),
+    // prettier-ignore
+    make('sys_trips', 'Trips Together', 'airplane-outline', { type: 'hasLocation' }, 1, "Places we've been", '#9B8CE9'),
+    // prettier-ignore
+    make('sys_birthdays', 'Birthdays', 'gift-outline', { type: 'birthdays' }, 2, 'More candles, more memories', '#E9A76C'),
+    // prettier-ignore
+    make('sys_anniversaries', 'Anniversaries', 'infinite-outline', { type: 'anniversary' }, 3, 'Another year with you', '#D06E88'),
+    // prettier-ignore
+    make('sys_funny', 'Funny Videos', 'happy-outline', { type: 'videos' }, 4, 'Laughing together, always', '#6CC5C0'),
+    // prettier-ignore
+    make('sys_random', 'Random Happy Moments', 'sparkles-outline', { type: 'uncategorized' }, 5, 'Just us', '#7FBF9B'),
+    // prettier-ignore
+    make('sys_favorites', 'Our Favorites', 'star-outline', { type: 'favorites' }, 6, 'Things we both love', '#E4C08A'),
   ];
 }
 

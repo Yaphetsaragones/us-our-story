@@ -1,24 +1,18 @@
 /**
- * Our Story: milestones and auto-grouped moments woven into one chronological
- * scroll, from the first message all the way to what is still ahead.
+ * Our Story: milestones you write and moments the app groups for you, woven
+ * into one chronological scroll from the first entry to what is still ahead.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { colors, gradients, radius, spacing, type } from '../theme';
-import {
-  EmptyState,
-  Header,
-  Icon,
-  IconButton,
-  Screen,
-  ScriptTitle,
-  TabSpacer,
-} from '../components/ui';
+import { absFill, colors, fonts, gradients, radius, spacing, type } from '../theme';
+import { EmptyState, Icon, Screen, TabSpacer } from '../components/ui';
+import { ActionSheet, type SheetAction } from '../components/ActionSheet';
+import { MediaThumb } from '../components/media';
 import { useApp } from '../context/AppContext';
 import { buildMoments, visibleMemories } from '../lib/select';
-import { daysBetween, daysUntil, fmtDate, fmtRange } from '../lib/date';
-import type { Moment, StoryEvent, StoryKind } from '../types';
+import { daysBetween, format, fmtDate } from '../lib/date';
+import type { Memory, Moment, StoryEvent, StoryKind } from '../types';
 import type { TabProps } from '../navigation/types';
 
 const KIND_ICON: Record<StoryKind, string> = {
@@ -31,297 +25,527 @@ const KIND_ICON: Record<StoryKind, string> = {
 };
 
 type Entry =
-  | { type: 'event'; at: number; event: StoryEvent }
-  | { type: 'moment'; at: number; moment: Moment }
-  | { type: 'now'; at: number };
+  | { kind: 'event'; at: number; event: StoryEvent }
+  | { kind: 'moment'; at: number; moment: Moment };
 
 export function TimelineScreen({ navigation }: TabProps<'Timeline'>) {
-  const { data } = useApp();
+  const { data, deleteStoryEvent } = useApp();
+  const [menuFor, setMenuFor] = useState<Entry | null>(null);
+
   const memories = useMemo(() => visibleMemories(data), [data]);
   const moments = useMemo(
     () => buildMoments(memories, data.momentTitles),
     [memories, data.momentTitles],
   );
 
-  const entries = useMemo<Entry[]>(() => {
-    const now = Date.now();
-    const list: Entry[] = [
-      ...data.story.map<Entry>(event => ({ type: 'event', at: event.date, event })),
-      ...moments.map<Entry>(moment => ({ type: 'moment', at: moment.startAt, moment })),
-      { type: 'now', at: now },
+  /** Oldest first — a story reads forwards. */
+  const entries = useMemo<Entry[]>(
+    () =>
+      [
+        ...data.story.map<Entry>(event => ({ kind: 'event', at: event.date, event })),
+        ...moments.map<Entry>(moment => ({ kind: 'moment', at: moment.startAt, moment })),
+      ].sort((a, b) => a.at - b.at),
+    [data.story, moments],
+  );
+
+  const daysTogether = data.couple?.togetherSince ? daysBetween(data.couple.togetherSince) : null;
+  const hero = useMemo(
+    () => memories.find(m => m.favorite && m.kind === 'photo') ?? memories.find(m => m.kind === 'photo'),
+    [memories],
+  );
+
+  const actionsFor = (entry: Entry): SheetAction[] => {
+    if (entry.kind === 'event') {
+      const { event } = entry;
+      return [
+        {
+          label: 'Remove this milestone',
+          icon: 'trash-outline',
+          destructive: true,
+          onPress: () => deleteStoryEvent(event.id),
+        },
+        {
+          label: 'Edit this milestone',
+          icon: 'create-outline',
+          onPress: () => navigation.navigate('StoryEventEdit', { id: event.id }),
+        },
+        ...(event.memoryIds.length
+          ? [
+              {
+                label: 'View its memories',
+                icon: 'images-outline',
+                onPress: () =>
+                  navigation.navigate('Viewer', {
+                    ids: event.memoryIds,
+                    index: 0,
+                    title: event.title,
+                  }),
+              },
+            ]
+          : []),
+      ];
+    }
+
+    const { moment } = entry;
+    return [
+      {
+        label: 'Open this moment',
+        icon: 'images-outline',
+        onPress: () =>
+          navigation.navigate('Collection', {
+            source: 'moment',
+            id: moment.id,
+            title: moment.title,
+          }),
+      },
+      {
+        label: 'Play as slideshow',
+        icon: 'play-outline',
+        onPress: () =>
+          navigation.navigate('Viewer', {
+            ids: moment.memories.map(m => m.id),
+            index: 0,
+            title: moment.title,
+          }),
+      },
+      {
+        label: 'Mark as a milestone',
+        icon: 'ribbon-outline',
+        onPress: () => navigation.navigate('StoryEventEdit', {}),
+      },
     ];
-    return list.sort((a, b) => a.at - b.at);
-  }, [data.story, moments]);
-
-  const daysTogether = data.couple?.togetherSince
-    ? daysBetween(data.couple.togetherSince)
-    : null;
-
-  const hasContent = data.story.length > 0 || moments.length > 0;
+  };
 
   return (
     <Screen>
-      <Header
-        title="Our Story"
-        center={false}
-        subtitle={
-          daysTogether !== null
-            ? `${daysTogether.toLocaleString()} days and counting`
-            : undefined
-        }
-        right={
-          <IconButton
-            name="add"
-            onPress={() => navigation.navigate('StoryEventEdit', {})}
-            label="Add a milestone"
-          />
-        }
-      />
+      {/* -------------------------------------------------------------- header */}
+      <View style={s.header}>
+        <View style={s.headerBody}>
+          <Text style={s.title}>Our Story</Text>
+          <View style={s.subtitleRow}>
+            <Text style={s.subtitle}>Every chapter of us, in one place</Text>
+            <Icon name="heart" size={11} color={colors.pink} style={s.subtitleHeart} />
+          </View>
+        </View>
 
-      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        {!hasContent ? (
+        <Pressable
+          onPress={() => navigation.navigate('StoryEventEdit', {})}
+          accessibilityRole="button"
+          accessibilityLabel="Add a milestone"
+          style={({ pressed }) => [s.addBtn, pressed && s.pressed]}>
+          <Icon name="add" size={14} color={colors.white} />
+          <Text style={s.addBtnText}>Add Memory</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+        {/* ---------------------------------------------------------- hero */}
+        {hero ? (
+          <View style={s.hero}>
+            <Image source={{ uri: hero.uri }} style={absFill} resizeMode="cover" />
+            <LinearGradient
+              colors={['rgba(20,10,16,0.85)', 'rgba(20,10,16,0.2)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={absFill}
+            />
+            <View style={s.heroBody}>
+              <View style={s.heroTitleRow}>
+                <Text style={s.heroTitle}>Our{'\n'}Story</Text>
+                <Icon name="heart-outline" size={14} color={colors.white} style={s.heroHeart} />
+              </View>
+              <Text style={s.heroLine}>Same people.{'\n'}Brighter days.</Text>
+            </View>
+
+            {data.couple?.togetherSince ? (
+              <View style={s.heroMeta}>
+                <Text style={s.heroMetaLabel}>Together since</Text>
+                <Text style={s.heroMetaValue}>{fmtDate(data.couple.togetherSince)}</Text>
+                {daysTogether !== null ? (
+                  <>
+                    <Text style={s.heroDays}>{daysTogether}</Text>
+                    <Text style={s.heroMetaLabel}>Days Together</Text>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ------------------------------------------------------- timeline */}
+        {entries.length ? (
+          <View style={s.rail}>
+            {entries.map((entry, i) => (
+              <View key={keyOf(entry, i)} style={s.entry}>
+                <View style={s.gutter}>
+                  <Text style={s.gutterDate}>
+                    {format(new Date(entry.at), 'MMM d').toUpperCase()}
+                    {'\n'}
+                    {format(new Date(entry.at), 'yyyy')}
+                  </Text>
+                </View>
+
+                <View style={s.spine}>
+                  <View style={[s.dot, entry.kind === 'event' && s.dotEvent]} />
+                  <View style={s.line} />
+                </View>
+
+                <View style={s.cardWrap}>
+                  {entry.kind === 'event' ? (
+                    <EventCard
+                      event={entry.event}
+                      memories={data.memories.filter(m => entry.event.memoryIds.includes(m.id))}
+                      onPress={() => navigation.navigate('StoryEventEdit', { id: entry.event.id })}
+                      onMenu={() => setMenuFor(entry)}
+                    />
+                  ) : (
+                    <MomentCard
+                      moment={entry.moment}
+                      onPress={() =>
+                        navigation.navigate('Collection', {
+                          source: 'moment',
+                          id: entry.moment.id,
+                          title: entry.moment.title,
+                        })
+                      }
+                      onMenu={() => setMenuFor(entry)}
+                    />
+                  )}
+                </View>
+              </View>
+            ))}
+
+            {/* ------------------------------------------------ what's next */}
+            <View style={s.entry}>
+              <View style={s.gutter}>
+                <Text style={s.gutterToday}>TODAY</Text>
+                <Text style={s.gutterDate}>
+                  {format(new Date(), 'MMM d').toUpperCase()}
+                  {'\n'}
+                  {format(new Date(), 'yyyy')}
+                </Text>
+              </View>
+              <View style={s.spine}>
+                <View style={[s.dot, s.dotToday]} />
+              </View>
+              <View style={s.cardWrap}>
+                <Pressable
+                  onPress={() => navigation.navigate('Import')}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [pressed && s.pressed]}>
+                  <LinearGradient
+                    colors={[...gradients.brand]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={s.nextCard}>
+                    <View style={s.nextIcon}>
+                      <Icon name="create-outline" size={18} color={colors.white} />
+                    </View>
+                    <View style={s.nextBody}>
+                      <Text style={s.nextTitle}>What's next?</Text>
+                      <Text style={s.nextLine}>
+                        Add a new memory and keep our story going…
+                      </Text>
+                    </View>
+                    <Icon name="chevron-forward" size={17} color={colors.white} />
+                  </LinearGradient>
+                </Pressable>
+              </View>
+            </View>
+
+            <Text style={s.footer}>
+              A collection of the little moments{'\n'}that mean everything ♥
+            </Text>
+          </View>
+        ) : (
           <EmptyState
             icon="git-commit-outline"
             title="Where does your story start?"
-            message="Add the first message, the first date, the first trip — then let the memories fill in everything between."
+            message="Add the first message, the first date, the first trip — then let your memories fill in everything between."
             actionLabel="Add a milestone"
             onAction={() => navigation.navigate('StoryEventEdit', {})}
           />
-        ) : (
-          <>
-            <View style={s.intro}>
-              <ScriptTitle text="Our Story" size={34} />
-              <Text style={s.introLine}>
-                Every first, every trip, every ordinary day worth keeping.
-              </Text>
-            </View>
-
-            <View style={s.rail}>
-              {entries.map((entry, i) => (
-                <View key={keyOf(entry, i)} style={s.entry}>
-                  <View style={s.gutter}>
-                    <View
-                      style={[
-                        s.dot,
-                        entry.type === 'event' && s.dotEvent,
-                        entry.type === 'now' && s.dotNow,
-                      ]}
-                    />
-                    {i < entries.length - 1 ? <View style={s.line} /> : null}
-                  </View>
-
-                  <View style={s.card}>
-                    {entry.type === 'now' ? (
-                      <NowCard daysTogether={daysTogether} />
-                    ) : entry.type === 'event' ? (
-                      <EventCard
-                        event={entry.event}
-                        onPress={() =>
-                          navigation.navigate('StoryEventEdit', { id: entry.event.id })
-                        }
-                        onOpenMemories={
-                          entry.event.memoryIds.length
-                            ? () =>
-                                navigation.navigate('Viewer', {
-                                  ids: entry.event.memoryIds,
-                                  index: 0,
-                                  title: entry.event.title,
-                                })
-                            : undefined
-                        }
-                      />
-                    ) : (
-                      <MomentEntry
-                        moment={entry.moment}
-                        onPress={() =>
-                          navigation.navigate('Collection', {
-                            source: 'moment',
-                            id: entry.moment.id,
-                            title: entry.moment.title,
-                          })
-                        }
-                      />
-                    )}
-                  </View>
-                </View>
-              ))}
-            </View>
-          </>
         )}
 
         <TabSpacer />
       </ScrollView>
+
+      <ActionSheet
+        visible={!!menuFor}
+        title={
+          menuFor?.kind === 'event' ? menuFor.event.title : menuFor?.moment.title ?? undefined
+        }
+        message={menuFor ? fmtDate(menuFor.at) : undefined}
+        actions={menuFor ? actionsFor(menuFor) : []}
+        onClose={() => setMenuFor(null)}
+      />
     </Screen>
   );
 }
 
 function keyOf(entry: Entry, i: number): string {
-  if (entry.type === 'event') return entry.event.id;
-  if (entry.type === 'moment') return entry.moment.id;
-  return `now-${i}`;
+  return entry.kind === 'event' ? entry.event.id : `${entry.moment.id}-${i}`;
 }
 
-function NowCard({ daysTogether }: { daysTogether: number | null }) {
+/** Up to four covers across the top, then title, caption and a count badge. */
+function CardShell({
+  covers,
+  title,
+  caption,
+  count,
+  icon,
+  onPress,
+  onMenu,
+}: {
+  covers: Memory[];
+  title: string;
+  caption?: string;
+  count: number;
+  icon?: string;
+  onPress: () => void;
+  onMenu: () => void;
+}) {
   return (
-    <LinearGradient colors={[...gradients.brand]} style={s.nowCard}>
-      <Icon name="heart" size={18} color={colors.white} />
-      <Text style={s.nowTitle}>Today</Text>
-      <Text style={s.nowText}>
-        {daysTogether !== null
-          ? `${daysTogether.toLocaleString()} days in, and the story keeps going.`
-          : 'The story keeps going.'}
-      </Text>
-    </LinearGradient>
+    <View style={s.card}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
+        {covers.length ? (
+          <View style={s.cardCovers}>
+            {covers.map(m => (
+              <View key={m.id} style={s.cardCover}>
+                <MediaThumb memory={m} style={absFill} radius={0} showBadges={false} />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={[s.cardCovers, s.cardCoversEmpty]}>
+            <Icon name={icon ?? 'sparkles-outline'} size={22} color={colors.textFaint} />
+          </View>
+        )}
+
+        <View style={s.cardBody}>
+          <View style={s.cardText}>
+            <Text style={s.cardTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            {caption ? (
+              <Text style={s.cardCaption} numberOfLines={1}>
+                {caption}
+              </Text>
+            ) : null}
+          </View>
+
+          {count > 0 ? (
+            <View style={s.countBadge}>
+              <Icon name="images-outline" size={11} color={colors.textMuted} />
+              <Text style={s.countText}>{count}</Text>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+
+      <Pressable
+        onPress={onMenu}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={`Options for ${title}`}
+        style={s.cardMenu}>
+        <Icon name="ellipsis-vertical" size={15} color={colors.textMuted} />
+      </Pressable>
+    </View>
   );
 }
 
 function EventCard({
   event,
+  memories,
   onPress,
-  onOpenMemories,
+  onMenu,
 }: {
   event: StoryEvent;
+  memories: Memory[];
   onPress: () => void;
-  onOpenMemories?: () => void;
+  onMenu: () => void;
 }) {
-  const future = event.date > Date.now();
-  const away = daysUntil(event.date);
-
   return (
-    <Pressable
+    <CardShell
+      covers={memories.filter(m => m.kind === 'photo').slice(0, 4)}
+      title={event.title}
+      caption={event.note}
+      count={event.memoryIds.length}
+      icon={KIND_ICON[event.kind]}
       onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [s.eventCard, pressed && s.pressed]}>
-      <View style={s.eventHead}>
-        <View style={s.eventIcon}>
-          <Icon name={KIND_ICON[event.kind]} size={16} color={colors.pink} />
-        </View>
-        <View style={s.eventHeadBody}>
-          <Text style={s.eventTitle}>{event.title}</Text>
-          <Text style={s.eventDate}>
-            {fmtDate(event.date)}
-            {future ? ` • in ${away} day${away === 1 ? '' : 's'}` : ''}
-          </Text>
-        </View>
-      </View>
-
-      {event.note ? <Text style={s.eventNote}>{event.note}</Text> : null}
-
-      {onOpenMemories ? (
-        <Pressable onPress={onOpenMemories} accessibilityRole="button" style={s.eventLink}>
-          <Icon name="images-outline" size={13} color={colors.pink} />
-          <Text style={s.eventLinkText}>
-            {event.memoryIds.length} memor{event.memoryIds.length === 1 ? 'y' : 'ies'}
-          </Text>
-        </Pressable>
-      ) : null}
-    </Pressable>
+      onMenu={onMenu}
+    />
   );
 }
 
-function MomentEntry({ moment, onPress }: { moment: Moment; onPress: () => void }) {
-  const covers = moment.memories.filter(m => m.kind === 'photo').slice(0, 3);
+function MomentCard({
+  moment,
+  onPress,
+  onMenu,
+}: {
+  moment: Moment;
+  onPress: () => void;
+  onMenu: () => void;
+}) {
+  const caption =
+    moment.location ??
+    moment.memories.find(m => m.caption)?.caption ??
+    `${moment.photoCount} photo${moment.photoCount === 1 ? '' : 's'}`;
 
   return (
-    <Pressable
+    <CardShell
+      covers={moment.memories.filter(m => m.kind === 'photo').slice(0, 4)}
+      title={moment.title}
+      caption={caption}
+      count={moment.memories.length}
       onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [s.momentEntry, pressed && s.pressed]}>
-      {covers.length ? (
-        <View style={s.covers}>
-          {covers.map(m => (
-            <Image key={m.id} source={{ uri: m.uri }} style={s.cover} resizeMode="cover" />
-          ))}
-        </View>
-      ) : null}
-      <Text style={s.momentTitle} numberOfLines={1}>
-        {moment.title}
-      </Text>
-      <Text style={s.momentMeta}>
-        {fmtRange(moment.startAt, moment.endAt)} • {moment.photoCount} photo
-        {moment.photoCount === 1 ? '' : 's'}
-        {moment.videoCount ? ` • ${moment.videoCount} video${moment.videoCount === 1 ? '' : 's'}` : ''}
-      </Text>
-      {moment.location ? (
-        <View style={s.momentPlace}>
-          <Icon name="location-outline" size={11} color={colors.pink} />
-          <Text style={s.momentPlaceText}>{moment.location}</Text>
-        </View>
-      ) : null}
-    </Pressable>
+      onMenu={onMenu}
+    />
   );
 }
 
 const s = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg },
-  pressed: { opacity: 0.82 },
+  scroll: { paddingHorizontal: spacing.lg },
+  pressed: { opacity: 0.85 },
 
-  intro: { alignItems: 'center', paddingVertical: spacing.lg },
-  introLine: {
-    ...type.small,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.xs,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
+  headerBody: { flex: 1 },
+  title: { ...type.h2, color: colors.text },
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
+  subtitle: { ...type.caption, color: colors.textMuted },
+  subtitleHeart: { marginLeft: 4 },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.pinkDeep,
+  },
+  addBtnText: { ...type.caption, color: colors.white, fontWeight: '700' },
 
-  rail: { marginTop: spacing.md },
+  // hero
+  hero: {
+    height: 132,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  heroBody: { paddingHorizontal: spacing.lg },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  heroTitle: {
+    fontFamily: fonts.script,
+    fontStyle: 'italic',
+    fontSize: 27,
+    lineHeight: 30,
+    color: colors.white,
+  },
+  heroHeart: { marginLeft: 5, marginTop: 3 },
+  heroLine: { ...type.caption, color: 'rgba(255,255,255,0.8)', marginTop: 6, lineHeight: 15 },
+  heroMeta: { position: 'absolute', right: spacing.lg, top: spacing.md, alignItems: 'flex-end' },
+  heroMetaLabel: { ...type.caption, fontSize: 9, color: 'rgba(255,255,255,0.7)' },
+  heroMetaValue: { ...type.caption, color: colors.white, marginBottom: spacing.sm },
+  heroDays: { fontSize: 30, lineHeight: 34, fontWeight: '700', color: colors.pink },
+
+  // rail
+  rail: {},
   entry: { flexDirection: 'row' },
-  gutter: { width: 28, alignItems: 'center' },
+  gutter: { width: 46, alignItems: 'flex-end', paddingTop: 2 },
+  gutterToday: { ...type.caption, fontSize: 9, color: colors.pink, fontWeight: '700' },
+  gutterDate: {
+    ...type.caption,
+    fontSize: 9,
+    lineHeight: 12,
+    color: colors.textFaint,
+    textAlign: 'right',
+  },
+  spine: { width: 22, alignItems: 'center', paddingTop: 4 },
   dot: {
     width: 9,
     height: 9,
     borderRadius: 5,
-    backgroundColor: colors.border,
-    marginTop: 8,
+    backgroundColor: colors.pinkDeep,
+    borderWidth: 2,
+    borderColor: colors.bg,
   },
   dotEvent: { backgroundColor: colors.pink, width: 11, height: 11, borderRadius: 6 },
-  dotNow: { backgroundColor: colors.gold, width: 11, height: 11, borderRadius: 6 },
-  line: { width: 1.5, flex: 1, backgroundColor: colors.borderSoft, marginVertical: 4 },
-  card: { flex: 1, paddingBottom: spacing.lg },
+  dotToday: { backgroundColor: colors.gold, width: 11, height: 11, borderRadius: 6 },
+  line: { width: 1.5, flex: 1, backgroundColor: colors.borderSoft, marginTop: 2 },
+  cardWrap: { flex: 1, paddingBottom: spacing.lg },
 
-  eventCard: {
-    backgroundColor: colors.surface,
+  // card
+  card: {
     borderRadius: radius.lg,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.pinkDeep,
-    padding: spacing.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
   },
-  eventHead: { flexDirection: 'row', alignItems: 'center' },
-  eventIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
+  cardCovers: { flexDirection: 'row', height: 88, gap: 1.5 },
+  cardCoversEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    backgroundColor: colors.surfaceAlt,
   },
-  eventHeadBody: { flex: 1 },
-  eventTitle: { ...type.body, fontWeight: '600', color: colors.text },
-  eventDate: { ...type.caption, color: colors.textMuted, marginTop: 2 },
-  eventNote: {
-    ...type.small,
-    color: colors.textSoft,
-    fontStyle: 'italic',
-    lineHeight: 19,
-    marginTop: spacing.md,
+  cardCover: { flex: 1, overflow: 'hidden' },
+  cardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
-  eventLink: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md },
-  eventLinkText: { ...type.caption, color: colors.pink, marginLeft: 5 },
+  cardText: { flex: 1, paddingRight: spacing.lg },
+  cardTitle: { ...type.body, fontWeight: '700', color: colors.text },
+  cardCaption: { ...type.caption, color: colors.textMuted, marginTop: 2 },
+  countBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+    marginRight: spacing.lg,
+  },
+  countText: { ...type.caption, color: colors.textMuted },
+  cardMenu: { position: 'absolute', right: 0, bottom: 12, padding: spacing.sm },
 
-  momentEntry: {
-    backgroundColor: colors.bgElevated,
+  // what's next
+  nextCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: radius.lg,
     padding: spacing.md,
+    gap: spacing.md,
   },
-  covers: { flexDirection: 'row', gap: 3, marginBottom: spacing.md },
-  cover: { flex: 1, height: 78, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
-  momentTitle: { ...type.body, fontWeight: '600', color: colors.text },
-  momentMeta: { ...type.caption, color: colors.textMuted, marginTop: 3 },
-  momentPlace: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
-  momentPlaceText: { ...type.caption, color: colors.pink, marginLeft: 4 },
+  nextIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextBody: { flex: 1 },
+  nextTitle: { ...type.body, fontWeight: '700', color: colors.white },
+  nextLine: { ...type.caption, color: 'rgba(255,255,255,0.9)', marginTop: 1 },
 
-  nowCard: { borderRadius: radius.lg, padding: spacing.lg },
-  nowTitle: { ...type.title, color: colors.white, marginTop: spacing.sm },
-  nowText: { ...type.small, color: 'rgba(255,255,255,0.9)', marginTop: 3, lineHeight: 19 },
+  footer: {
+    fontFamily: fonts.script,
+    fontStyle: 'italic',
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+  },
 });

@@ -67,6 +67,10 @@ export interface Album {
   id: string;
   title: string;
   icon: string;
+  /** One line under the title, e.g. "Where it all began". */
+  caption?: string;
+  /** Colour of the icon badge, so collections are told apart at a glance. */
+  accent?: string;
   rule: AlbumRule;
   /** Auto albums are generated on first launch and cannot be deleted. */
   system: boolean;

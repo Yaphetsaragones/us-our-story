@@ -54,9 +54,20 @@ function migrate(data: Partial<AppData>): AppData {
     meId: data.meId ?? null,
   };
 
-  // Make sure a system album added in a later release shows up for existing users.
+  // System albums are defined in code, so their presentation follows the app
+  // rather than whatever was stored when the space was first created. Anything
+  // the couple owns — custom albums, ordering, what is filed where — is theirs
+  // and is left alone.
+  const system = new Map(systemAlbums().map(a => [a.id, a]));
+  merged.albums = merged.albums.map(album => {
+    const fresh = system.get(album.id);
+    return fresh
+      ? { ...album, title: fresh.title, icon: fresh.icon, caption: fresh.caption, accent: fresh.accent, rule: fresh.rule }
+      : album;
+  });
+
   const have = new Set(merged.albums.map(a => a.id));
-  const missing = systemAlbums().filter(a => !have.has(a.id));
+  const missing = [...system.values()].filter(a => !have.has(a.id));
   if (missing.length) merged.albums = [...merged.albums, ...missing];
 
   return merged;
