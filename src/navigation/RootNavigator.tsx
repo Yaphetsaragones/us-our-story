@@ -24,6 +24,7 @@ import { TimelineScreen } from '../screens/TimelineScreen';
 import { UsScreen } from '../screens/UsScreen';
 import { ImportScreen } from '../screens/ImportScreen';
 import { CollectionScreen } from '../screens/CollectionScreen';
+import { SearchScreen } from '../screens/SearchScreen';
 import { ViewerScreen } from '../screens/ViewerScreen';
 import { MemoryEditScreen } from '../screens/MemoryEditScreen';
 import { StoryEventEditScreen } from '../screens/StoryEventEditScreen';
@@ -97,6 +98,11 @@ export function RootNavigator() {
           options={{ animation: 'slide_from_bottom' }}
         />
         <Stack.Screen name="Collection" component={CollectionScreen} />
+        <Stack.Screen
+          name="Search"
+          component={SearchScreen}
+          options={{ animation: 'fade' }}
+        />
         <Stack.Screen
           name="Viewer"
           component={ViewerScreen}

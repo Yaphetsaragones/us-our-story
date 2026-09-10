@@ -15,6 +15,7 @@ export type RootStackParamList = {
 
   Import: { albumId?: string } | undefined;
   Collection: { source: CollectionSource; id?: string; title?: string };
+  Search: undefined;
   Viewer: { ids: string[]; index: number; title?: string };
   MemoryEdit: { id: string };
   StoryEventEdit: { id?: string };
