@@ -16,6 +16,7 @@ import Video from 'react-native-video';
 import LinearGradient from 'react-native-linear-gradient';
 import { absFill, colors, gradients, radius, spacing, type } from '../theme';
 import { Icon, IconButton } from '../components/ui';
+import { ActionSheet } from '../components/ActionSheet';
 import { useApp } from '../context/AppContext';
 import { fmtDate, fmtTime } from '../lib/date';
 import type { Memory } from '../types';
@@ -33,6 +34,7 @@ export function ViewerScreen({ navigation, route }: RootProps<'Viewer'>) {
 
   const [index, setIndex] = useState(Math.min(startIndex, Math.max(0, memories.length - 1)));
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const listRef = useRef<FlatList<Memory>>(null);
 
   const current = memories[index];
@@ -70,21 +72,27 @@ export function ViewerScreen({ navigation, route }: RootProps<'Viewer'>) {
     ]);
   }, [current, deleteMemory, memories.length, navigation]);
 
-  const more = useCallback(() => {
-    if (!current) return;
-    Alert.alert(title ?? 'Memory', undefined, [
+  const sheetActions = useMemo(() => {
+    if (!current) return [];
+    return [
       {
-        text: 'Edit caption, date & place',
-        onPress: () => navigation.navigate('MemoryEdit', { id: current.id }),
+        label: 'Remove from Us',
+        icon: 'trash-outline',
+        destructive: true,
+        onPress: remove,
       },
       {
-        text: current.hidden ? 'Unhide this memory' : 'Hide this memory',
+        label: current.hidden ? 'Unhide this memory' : 'Hide this memory',
+        icon: current.hidden ? 'eye-outline' : 'eye-off-outline',
         onPress: () => toggleHidden(current.id),
       },
-      { text: 'Remove from Us', style: 'destructive', onPress: remove },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [current, navigation, remove, title, toggleHidden]);
+      {
+        label: 'Edit caption, date & place',
+        icon: 'create-outline',
+        onPress: () => navigation.navigate('MemoryEdit', { id: current.id }),
+      },
+    ];
+  }, [current, navigation, remove, toggleHidden]);
 
   if (!current) {
     return (
@@ -158,7 +166,7 @@ export function ViewerScreen({ navigation, route }: RootProps<'Viewer'>) {
             </View>
             <IconButton
               name="ellipsis-horizontal"
-              onPress={more}
+              onPress={() => setSheetOpen(true)}
               color={colors.white}
               label="More options"
             />
@@ -255,6 +263,13 @@ export function ViewerScreen({ navigation, route }: RootProps<'Viewer'>) {
           </View>
         </>
       ) : null}
+
+      <ActionSheet
+        visible={sheetOpen}
+        title={title ?? 'Memory'}
+        actions={sheetActions}
+        onClose={() => setSheetOpen(false)}
+      />
     </View>
   );
 }
