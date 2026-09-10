@@ -73,9 +73,10 @@ export const radius = {
  * `script` is the closest expressive system face on each platform.
  */
 export const fonts = {
-  // Android maps 'cursive' to whatever handwriting face the device ships
-  // (Dancing Script on most), which reads far closer to the design than serif.
-  script: Platform.select({ ios: 'Snell Roundhand', android: 'cursive' }) as string,
+  // Bundled in assets/fonts and linked into both native projects, so the
+  // handwritten headings look the same on every device rather than falling
+  // back to whatever script face the OS happens to ship.
+  script: 'DancingScript-Regular',
   body: Platform.select({ ios: 'System', android: 'sans-serif' }) as string,
   bodyMedium: Platform.select({ ios: 'System', android: 'sans-serif-medium' }) as string,
 };
